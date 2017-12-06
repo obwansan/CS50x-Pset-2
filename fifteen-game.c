@@ -1,20 +1,11 @@
 /**
  * fifteen.c
  *
- * CS50x
- * Problem Set 3
- *
- * Implements the Game of Fifteen (generalized to d x d).
+ * Implements Game of Fifteen (generalized to d x d).
  *
  * Usage: ./fifteen d
- *
- * whereby the board's dimensions are to be d x d,
- * where d must be in [MIN,MAX]
- *
- * Note that usleep is obsolete, but it offers more granularity than
- * sleep and is simpler to use than nanosleep; `man usleep` for more.
  */
-
+ 
 #define _XOPEN_SOURCE 500
 
 #include <cs50.h>
@@ -22,21 +13,22 @@
 #include <stdlib.h>
 #include <unistd.h>
 
-// board's minimal dimension
-#define MIN 3
+// constants
+#define DIM_MIN 3
+#define DIM_MAX 9
 
-// board's maximal dimension
-#define MAX 9
+// board
+int board[DIM_MAX][DIM_MAX];
 
-// board, whereby board[i][j] represents row i and column j
-int board[MAX][MAX];
-
-// board's dimension
+// dimensions
 int d;
 
-// variables to keep track of where the blank is
-int xloc;
-int yloc;
+// tile locations
+int blankRow;
+int blankCol;
+int blankTile;
+int tileRow;
+int tileCol;
 
 // prototypes
 void clear(void);
@@ -45,34 +37,37 @@ void init(void);
 void draw(void);
 bool move(int tile);
 bool won(void);
-void save(void);
 
 int main(int argc, string argv[])
 {
-    // greet player
-    greet();
-
     // ensure proper usage
     if (argc != 2)
     {
-        printf("Usage: ./fifteen d\n");
+        printf("Usage: fifteen d\n");
         return 1;
     }
 
     // ensure valid dimensions
     d = atoi(argv[1]);
-    if (d < MIN || d > MAX)
+    if (d < DIM_MIN || d > DIM_MAX)
     {
         printf("Board must be between %i x %i and %i x %i, inclusive.\n",
-            MIN, MIN, MAX, MAX);
+            DIM_MIN, DIM_MIN, DIM_MAX, DIM_MAX);
         return 2;
     }
 
+    // open log
+    FILE *file = fopen("log.txt", "w");
+    if (file == NULL)
+    {
+        return 3;
+    }
+
+    // greet user with instructions
+    greet();
+
     // initialize the board
     init();
-
-    xloc = d-1;   //defines x and y coordinates of the blank
-    yloc = d-1;
 
     // accept moves until game is won
     while (true)
@@ -83,8 +78,20 @@ int main(int argc, string argv[])
         // draw the current state of the board
         draw();
 
-        // saves the current state of the board (for testing)
-        save();
+        // log the current state of the board (for testing)
+        for (int i = 0; i < d; i++)
+        {
+            for (int j = 0; j < d; j++)
+            {
+                fprintf(file, "%i", board[i][j]);
+                if (j < d - 1)
+                {
+                    fprintf(file, "|");
+                }
+            }
+            fprintf(file, "\n");
+        }
+        fflush(file);
 
         // check for win
         if (won())
@@ -96,6 +103,16 @@ int main(int argc, string argv[])
         // prompt for move
         printf("Tile to move: ");
         int tile = get_int();
+        
+        // quit if user inputs 0 (for testing)
+        if (tile <= 0)
+        {
+            break;
+        }
+
+        // log move (for testing)
+        fprintf(file, "%i\n", tile);
+        fflush(file);
 
         // move if possible, else report illegality
         if (!move(tile))
@@ -104,11 +121,14 @@ int main(int argc, string argv[])
             usleep(500000);
         }
 
-        // sleep for animation's sake
+        // sleep thread for animation's sake
         usleep(500000);
     }
+    
+    // close log
+    fclose(file);
 
-    // that's all folks
+    // success
     return 0;
 }
 
@@ -127,32 +147,35 @@ void clear(void)
 void greet(void)
 {
     clear();
-    printf("GAME OF FIFTEEN\n");
-    usleep(2000000);
+    printf("WELCOME TO GAME OF FIFTEEN\n");
+    usleep(1000000);
 }
 
 /**
- * Initializes the game's board with tiles numbered 1 through d*d - 1,
- * (i.e., fills board with values but does not actually print them),
- * whereby board[i][j] represents row i and column j.
+ * Initializes the game's board with tiles numbered 1 through d*d - 1
+ * (i.e., fills 2D array with values but does not actually print them).  
  */
 void init(void)
 {
-    bool even = false;
-    int size = d*d;
-    if (size % 2 == 0)
-        even = true;
-
-    for (int i = 0; i < d; i++)
+    // get size of board (array)
+    int size = d * d;
+    
+    // iterate across rows
+    for (int row = 0; row < d; row++)
     {
-        for (int j = 0; j < d; j++)
+        // iterate across columns
+        for (int col = 0; col < d; col++)
         {
-            board[i][j] = size - 1;
-            size -= 1;
+            // set tile number and decrement array size by 1
+            board[row][col] = size - 1;
+            size--;
         }
     }
-
-    if (even)
+    // assign underscore (ASCII 95) to blank tile
+    board[d-1][d-1] = 95;
+    
+    // if array size is even, swap 1 and 2
+    if ((d * d) % 2 == 0)
     {
         board[d-1][d-2] = 2;
         board[d-1][d-3] = 1;
@@ -164,131 +187,115 @@ void init(void)
  */
 void draw(void)
 {
-   for (int i = 0; i < d; i++)
-   {
-        for (int j = 0; j < d; j++)
+    // iterate across rows
+    for (int row = 0; row < d; row++)
+    {
+        // iterate across columns
+        for (int col = 0; col < d; col++)
         {
-            if (board[i][j] > 9)
-                printf("%i ", board[i][j]);
-            else if (board[i][j] > 0)
-                printf("%2i ",board[i][j]);
-            else
-                printf(" _");
+            // replace zero with underscore
+            if (board[row][col] == 95)
+            {
+                printf("%2c", '_');
+            }
+            // else print values per init
+            else 
+            {
+               printf("%2d ", board[row][col]); 
+            }
         }
-   printf("\n");
-   }
+        // move to next row
+        printf("\n");
+    }
 }
 
 /**
  * If tile borders empty space, moves tile and returns true, else
- * returns false.
+ * returns false. 
  */
-
- // starting blank locations information
-
-
+ 
 bool move(int tile)
 {
-    int tilex;
-    int tiley;
-
-    for (int i = 0; i < d; i++)
+    // iterate across rows
+    for (int row = 0; row < d; row++)
     {
-        for (int j = 0; j < d; j++)
+        // iterate across columns
+        for (int col = 0; col < d; col++)
         {
-            if (board[i][j]== tile)     //incrementally goes through the board looking for the location
+            // if tile is in array
+            if (board[row][col] == tile)
             {
-                tilex = i;      //of the tile requested and saves it to array
-                tiley = j;
+                // if blank tile is above tile (not exceeding array dimension)
+                if (board[row - 1][col] == 95 && row - 1 >= 0)
+                {
+                    // swap them
+                    board[row - 1][col] = tile;
+                    board[row][col] = 95;
+                    return true;
+                }
+                // if blank tile is below tile (not exceeding array dimension)
+                else if (board[row + 1][col] == 95 && row + 1 < d)
+                {
+                    // swap them
+                    board[row + 1][col] = tile;
+                    board[row][col] = 95;
+                    return true;
+                    
+                }
+                 // if blank tile is right of tile (not exceeding array dimension)
+                else if (board[row][col + 1] == 95 && col + 1 < d)
+                {
+                    // swap them
+                    board[row][col + 1] = tile;
+                    board[row][col] = 95;
+                    return true;
+                }
+                 // if blank tile is left of tile (not exceeding array dimension)
+                else if (board[row][col - 1] == 95 && col - 1 >= 0)
+                {
+                    // swap them
+                    board[row][col - 1] = tile;
+                    board[row][col] = 95;
+                    return true;
+                }   
             }
+            
         }
     }
-    //next step checks all posible locations of acceptable places for the variable to be
-    if ((tile == board[xloc+1][yloc] && xloc < 3) ||(tile ==  board[xloc-1][yloc] && xloc > -1)||
-    (tile ==  board[xloc][yloc+1] && yloc < 3)|| (tile == board[xloc][yloc-1] && yloc > -1))
-    {
-        board[tilex][tiley] = 0;   //switches tiles on gameboard
-        board[xloc][yloc] = tile;
-
-        xloc = tilex;      //moves the blanks location in gloabal variable
-        yloc = tiley;
-
-        return true;
-    }
-    else
-        return false;
+    return false;
 }
 
 /**
- * Returns true if game is won (i.e., board is in winning configuration),
+ * Returns true if game is won (i.e., board is in winning configuration), 
  * else false.
  */
 bool won(void)
 {
-    int counter = 1;  // variable to check all the values in the grid
-
-    for (int k = 0; k < d; k++)
+    // set counter
+    int counter = 1;
+    
+    // iterate across rows
+    for (int row = 0; row < d; row++)
     {
-        for (int l = 0; l < d; l++)
+        // iterate across columns
+        for (int col = 0; col < d; col++)
         {
-            if (board[k][l] == 0)
-                counter = 0;
-
-            if (board[k][l] != counter)  //checks if all the other values are where they are supposed to be
-                return false;
-
-        counter++;  //iterates counter
-        }
-
-    }
-
-    return true;
-}
-
-/**
- * Saves the current state of the board to disk (for testing).
- */
-void save(void)
-{
-    // log
-    const string log = "log.txt";
-
-    // delete existing log, if any, before first save
-    static bool saved = false;
-    if (!saved)
-    {
-        unlink(log);
-        saved = true;
-    }
-
-    // open log
-    FILE* p = fopen(log, "a");
-    if (p == NULL)
-    {
-        return;
-    }
-
-    // log board
-    fprintf(p, "{");
-    for (int i = 0; i < d; i++)
-    {
-        fprintf(p, "{");
-        for (int j = 0; j < d; j++)
-        {
-            fprintf(p, "%i", board[i][j]);
-            if (j < d - 1)
+            // if location isn't bottom right-hand corner
+            if (board[row][col] != board[d-1][d-1])
             {
-                fprintf(p, ",");
+                // if number not same as counter
+                if (board[row][col] != counter)
+                {
+                    return false;
+                }
+                else
+                {
+                    // increment counter and move to next number
+                    counter++;
+                }
+                
             }
         }
-        fprintf(p, "}");
-        if (i < d - 1)
-        {
-            fprintf(p, ",");
-        }
     }
-    fprintf(p, "}\n");
-
-    // close log
-    fclose(p);
+    return true;
 }
